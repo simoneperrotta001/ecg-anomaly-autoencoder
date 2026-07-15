@@ -91,6 +91,8 @@ def run_single(run_cfg, config, device):
     print(f"[{run_id}] AUC={metrics['auc']:.4f}  Precision={metrics['precision']:.4f}  "
           f"Recall={metrics['recall']:.4f}  F1={metrics['f1']:.4f}")
 
+    engine.save_diagnostic_plots(run_id, errors, y_test, metrics, results_dir)
+
     return metrics
 
 

@@ -95,5 +95,64 @@ def evaluate(errors, y_test):
         "fpr": fpr.tolist(),
         "tpr": tpr.tolist(),
     }
-    
+
     return metrics
+
+def save_diagnostic_plots(run_id, errors, y_test, metrics, results_dir):
+    """
+    Saves confusion matrix, ROC curve, PR curve, and error distribution
+    plots for a single run, named after its run_id (not split name), so
+    every run in configs/experiments.yaml gets its own complete set of
+    diagnostic plots.
+    """
+    import matplotlib.pyplot as plt
+    from sklearn.metrics import roc_curve, precision_recall_curve, ConfusionMatrixDisplay
+    import numpy as np
+
+    fpr = np.array(metrics["fpr"])
+    tpr = np.array(metrics["tpr"])
+    threshold = metrics["threshold_youden"]
+    cm = np.array(metrics["confusion_matrix"])
+
+    # 1. Error distribution
+    plt.figure(figsize=(8, 5))
+    plt.hist(errors[y_test == 0], bins=100, alpha=0.6, label="Normal")
+    plt.hist(errors[y_test == 1], bins=100, alpha=0.6, label="Anomalous")
+    plt.axvline(threshold, color="red", linestyle="--", label="Threshold")
+    plt.xlabel("Reconstruction error (MSE)")
+    plt.ylabel("Count")
+    plt.title(f"Reconstruction Error Distribution ({run_id})")
+    plt.legend()
+    plt.savefig(f"{results_dir}/error_distribution_{run_id}.png")
+    plt.close()
+
+    # 2. ROC curve
+    plt.figure(figsize=(6, 6))
+    plt.plot(fpr, tpr, label=f"ROC (AUC = {metrics['auc']:.4f})")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(f"ROC Curve ({run_id})")
+    plt.legend()
+    plt.savefig(f"{results_dir}/roc_curve_{run_id}.png")
+    plt.close()
+
+    # 3. Precision-Recall curve
+    precisions, recalls, _ = precision_recall_curve(y_test, errors)
+    plt.figure(figsize=(6, 6))
+    plt.plot(recalls, precisions, label="Precision-Recall curve")
+    plt.scatter(metrics["recall"], metrics["precision"], color="red", zorder=5,
+                label=f"Youden's J point (F1={metrics['f1']:.3f})")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title(f"Precision-Recall Curve ({run_id})")
+    plt.legend()
+    plt.savefig(f"{results_dir}/pr_curve_{run_id}.png")
+    plt.close()
+
+    # 4. Confusion matrix
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Normal", "Anomalous"])
+    disp.plot(cmap="Blues")
+    plt.title(f"Confusion Matrix ({run_id})")
+    plt.savefig(f"{results_dir}/confusion_matrix_{run_id}.png")
+    plt.close()
