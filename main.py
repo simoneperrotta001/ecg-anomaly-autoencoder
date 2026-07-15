@@ -15,14 +15,32 @@ Usage:
 
 import os
 import json
+import random
 import yaml
 import torch
+import numpy as np
 import matplotlib.pyplot as plt
 
 import src.data_prep as data_prep
 import src.preprocessing as preprocessing
 import src.engine as engine
 
+
+def set_seed(seed=42):
+    """
+    Fixes all sources of randomness (Python, NumPy, PyTorch CPU/GPU) so that
+    re-running the pipeline produces identical results. Without this, weight
+    initialization and DataLoader shuffling are non-deterministic, and
+    reported metrics can shift noticeably between runs even with identical
+    code and data (observed empirically: AUC varied by ~0.06 across runs
+    before this fix was introduced).
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def load_config():
     with open("configs/experiments.yaml") as f:
@@ -113,6 +131,7 @@ def make_comparison_outputs(config, all_metrics):
 
 
 def main():
+    set_seed(42)
     config = load_config()
     device = engine.get_device()
     print(f"Using device: {device}\n")
