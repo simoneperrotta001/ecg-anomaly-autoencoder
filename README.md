@@ -47,16 +47,35 @@ The random split produces a noticeably higher (optimistic) AUC than the
 inter-patient split, demonstrating quantitatively how naive splitting
 overstates real-world generalization performance.
 
-## Why a convolutional architecture (Conv1D) instead of a Dense one
+## Conv1D vs Dense: theoretical expectation vs empirical finding
 
-An ECG beat is a temporal signal with a characteristic local morphology (the
-QRS complex, P wave, T wave). 1D convolutions are designed to capture local,
-repeating patterns along a sequence via weight sharing, which makes them
-more robust to small temporal shifts (jitter) in R-peak alignment and to
-morphological variability between patients, compared to a fully-connected
-(Dense) autoencoder that treats every sample as an independent feature. This
-project verifies that claim empirically (see "Architecture comparison"
-below) rather than assuming it.
+The initial architectural hypothesis was that a 1D convolutional
+autoencoder would outperform a Dense (fully-connected) one, since
+convolutions capture local, repeating morphological patterns (the QRS
+complex, P wave, T wave) via weight sharing, making them more robust to
+small temporal shifts (jitter) and morphological variability between
+patients.
+
+**The empirical results do not support this hypothesis.** On the
+inter-patient split, the Dense autoencoder outperformed Conv1D on every
+metric (AUC 0.864 vs 0.795, recall 0.819 vs 0.572, F1 0.544 vs 0.480).
+
+A plausible explanation: beats in this dataset are already extracted as
+fixed-length windows centered on the annotated R-peak. This alignment
+removes much of the temporal jitter that would normally justify a
+translation-invariant architecture — the main theoretical advantage of
+convolutions is largely neutralized by the preprocessing step itself. With
+already-aligned inputs, a Dense network can directly exploit
+position-specific features (e.g. "sample at position 180 is always the
+R-peak") that a convolutional architecture, by design, does not
+distinguish by position.
+
+This result is reported as a genuine finding, not adjusted after the fact:
+the architectural choice was made and justified on theoretical grounds
+before empirical testing, and the test itself is what revealed the
+mismatch. Both architectures, along with the bottleneck sensitivity study,
+remain useful precisely because they let this be verified rather than
+assumed.
 
 ## Dataset
 
@@ -142,6 +161,18 @@ same runs — no configuration is ever duplicated or retrained:
 - `conv_bottleneck_16 / 32 / 128` — Conv1D, inter-patient split, varying
   bottleneck width (64 is covered by `conv_interpatient`, reused rather than
   retrained)
+
+### Bottleneck sensitivity finding
+
+AUC across bottleneck widths follows a non-monotonic, inverted-U shape:
+16 → 0.712, **32 → 0.813**, 64 → 0.795, 128 → 0.749. This matches the
+expected reconstruction-vs-detection trade-off: a bottleneck too narrow
+loses information even for normal beats (underfitting normal morphology),
+while a bottleneck too wide lets the model reconstruct anomalous beats
+almost as well as normal ones (over-generalizing, weakening the anomaly
+signal). Notably, **32 channels performed best**, not the 64 used as the
+default in the main pipeline — reported here transparently rather than
+adjusting the "official" model choice after the fact.
 
 ## Model architecture (summary)
 
