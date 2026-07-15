@@ -42,6 +42,9 @@ def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
 def load_config():
     with open("configs/experiments.yaml") as f:
         return yaml.safe_load(f)
