@@ -27,9 +27,9 @@ The study focuses on four aspects:
 - Conv1D versus Dense autoencoders;
 - Conv1D bottleneck size.
 
-The main contribution is methodological: the experiments show that
-preprocessing and evaluation choices can strongly affect the apparent
-performance of ECG anomaly detection models.
+The main contribution is methodological: preprocessing and evaluation
+choices can strongly affect the apparent performance of ECG anomaly
+detection models.
 
 ---
 
@@ -113,7 +113,7 @@ raw beats
     ↓
 create split
     ↓
-fit mean and standard deviation on training data
+fit mean and standard deviation on normal training beats
     ↓
 apply the same statistics to train and test
 ```
@@ -139,7 +139,8 @@ results/preprocessing_metadata.json
 
 ## Normalization ablation
 
-Three strategies were evaluated.
+Three normalization strategies were evaluated in isolated validation
+experiments.
 
 | Strategy | Random AUC | Inter-patient AUC | Observation |
 |---|---:|---:|---|
@@ -150,11 +151,15 @@ Three strategies were evaluated.
 Per-beat normalization removed information useful for anomaly ranking and
 produced AUC values below 0.5.
 
-The legacy per-patient implementation achieved higher AUC values, but it
-used normal beats from each test patient to estimate normalization
-statistics. This oracle assumption is not used in the final pipeline.
+The legacy per-patient implementation achieved higher AUC values, but used
+normal beats from each test patient to estimate that patient's statistics.
+This oracle assumption is not used in the final pipeline.
 
-The ablation experiments are available in:
+The global values above come from an isolated validation script. The final
+results below come from a separate pipeline execution with the random seed
+reset independently before every run.
+
+The ablation outputs are available in:
 
 ```text
 experiments/normalization_ablation.py
@@ -215,12 +220,16 @@ ROC-AUC is the primary comparison metric.
 
 | Run | AUC | Precision | Recall | F1 |
 |---|---:|---:|---:|---:|
-| `conv_random` | 0.6850 | 0.6403 | 0.6590 | 0.6495 |
-| `conv_interpatient` | 0.6537 | 0.2771 | 0.4095 | 0.3306 |
-| `dense_interpatient` | **0.7926** | **0.5908** | **0.5268** | **0.5570** |
-| `conv_bottleneck_16` | 0.6906 | 0.2460 | 0.5983 | 0.3486 |
-| `conv_bottleneck_32` | 0.5436 | 0.1869 | 0.5608 | 0.2804 |
-| `conv_bottleneck_128` | 0.6507 | 0.2580 | 0.4857 | 0.3370 |
+| `conv_random` | 0.7763 | **0.7518** | **0.6818** | **0.7151** |
+| `conv_interpatient` | 0.6627 | 0.2247 | 0.5808 | 0.3241 |
+| `dense_interpatient` | **0.8035** | 0.5241 | 0.5816 | 0.5514 |
+| `conv_bottleneck_16` | 0.6850 | 0.2536 | 0.6126 | 0.3587 |
+| `conv_bottleneck_32` | 0.6119 | 0.3052 | 0.4224 | 0.3543 |
+| `conv_bottleneck_128` | 0.6523 | 0.2909 | 0.5211 | 0.3734 |
+
+Bold values indicate the best result for each metric, although the random
+and inter-patient protocols use different test compositions and should not
+be treated as directly interchangeable deployment evaluations.
 
 Complete numerical outputs are stored in:
 
@@ -234,44 +243,53 @@ results/all_results.json
 
 ### Random versus inter-patient split
 
-Using the same 64-channel Conv1D model:
+Using the same 64-channel Conv1D architecture:
 
 | Protocol | AUC |
 |---|---:|
-| Random | 0.6850 |
-| Inter-patient | 0.6537 |
+| Random | 0.7763 |
+| Inter-patient | 0.6627 |
 
-The random split produced a more optimistic estimate than the
-patient-independent split.
+The observed AUC difference is:
 
-The difference should not be interpreted as an exact causal measure of
-patient leakage because the test sets also differ in patient composition.
+```text
+0.7763 - 0.6627 = 0.1136
+```
+
+The random split therefore produced a more optimistic estimate than the
+patient-independent protocol.
+
+This difference should not be interpreted as an exact causal measure of
+patient leakage because the test sets also differ in patient and class
+composition.
 
 ### Conv1D versus Dense
 
-| Architecture | AUC | F1 |
-|---|---:|---:|
-| Conv1D | 0.6537 | 0.3306 |
-| Dense | **0.7926** | **0.5570** |
+| Architecture | AUC | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|
+| Conv1D | 0.6627 | 0.2247 | 0.5808 | 0.3241 |
+| Dense | **0.8035** | **0.5241** | **0.5816** | **0.5514** |
 
 The Dense autoencoder outperformed Conv1D under patient-independent
 evaluation.
 
 A plausible explanation is that the beats are already aligned around the
 R-peak. This reduces the temporal variability that would normally favor a
-convolutional architecture.
+convolutional architecture. This interpretation is plausible, but is not
+established causally by the current experiment.
 
 ### Bottleneck sensitivity
 
 | Bottleneck | AUC |
 |---:|---:|
-| 16 | **0.6906** |
-| 32 | 0.5436 |
-| 64 | 0.6537 |
-| 128 | 0.6507 |
+| 16 | **0.6850** |
+| 32 | 0.6119 |
+| 64 | 0.6627 |
+| 128 | 0.6523 |
 
 The relationship between bottleneck size and anomaly-detection performance
-is non-monotonic.
+is non-monotonic. The narrowest tested bottleneck obtained the highest
+Conv1D inter-patient AUC.
 
 A lower reconstruction loss does not necessarily imply better anomaly
 ranking.
@@ -381,17 +399,19 @@ split_before_normalization = true
 
 ## Reproducibility
 
-The project uses fixed seeds for:
+The project uses seed 42 for Python, NumPy, PyTorch, the random split, model
+initialization, and DataLoader shuffling.
 
-- Python;
-- NumPy;
-- PyTorch;
-- the random split.
+The seed is reset before each experimental run, while each training
+DataLoader uses its own seeded generator. Results are therefore independent
+of the run order in `configs/experiments.yaml`.
 
-Deterministic PyTorch settings are enabled where supported.
+A targeted rerun of `conv_interpatient` reproduced the same epoch losses and
+final metrics after deleting only its checkpoint.
 
-Exact bitwise reproducibility across different hardware and software
-versions is not guaranteed.
+Deterministic PyTorch settings are enabled where supported. Exact bitwise
+reproducibility across different hardware and software versions is not
+guaranteed.
 
 ---
 
@@ -401,7 +421,7 @@ versions is not guaranteed.
 - All non-normal beats are grouped into one anomaly class.
 - No external dataset validation is included.
 - Threshold-dependent metrics use a test-selected threshold.
-- Results are based on one fixed seed.
+- Results are based on one fixed seed rather than repeated seeded runs.
 - No clinical claim is made.
 
 ---
@@ -411,7 +431,7 @@ versions is not guaranteed.
 Possible extensions include:
 
 - separate patient-independent validation data;
-- repeated group-based splits;
+- repeated group-based splits and multiple seeds;
 - patient-level confidence intervals;
 - external ECG validation;
 - anomaly-specific evaluation;

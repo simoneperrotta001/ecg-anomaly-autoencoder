@@ -51,8 +51,14 @@ def load_config():
 
 
 def run_single(run_cfg, config, device):
-    """Trains (or loads if checkpoint exists) and evaluates a single run."""
+    """Train or load one configured model and evaluate it."""
     run_id = run_cfg["id"]
+    seed = int(config.get("seed", 42))
+
+    # Every run starts from the same controlled RNG state.
+    # This makes its result independent of its position in experiments.yaml.
+    set_seed(seed)
+
     models_dir = os.path.join(config["project"]["project_dir"], "models")
     results_dir = os.path.join(config["project"]["project_dir"], "results")
     os.makedirs(models_dir, exist_ok=True)
@@ -61,37 +67,65 @@ def run_single(run_cfg, config, device):
     checkpoint_path = os.path.join(models_dir, f"{run_id}.pt")
     processed_dir = config["project"]["processed_dir"]
 
-    X_train, X_test, y_test = engine.load_split(processed_dir, run_cfg["split"])
+    X_train, X_test, y_test = engine.load_split(
+        processed_dir,
+        run_cfg["split"],
+    )
+
+    # Model initialization happens after resetting the seed.
     model = engine.build_model(run_cfg)
 
     if os.path.exists(checkpoint_path):
         print(f"[{run_id}] Checkpoint found, loading (skipping training).")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        model.load_state_dict(
+            torch.load(checkpoint_path, map_location=device)
+        )
         model.to(device)
     else:
         print(f"[{run_id}] Training from scratch...")
         t_cfg = config["training"]
+
         model, loss_history = engine.train(
-            model, X_train, device,
-            epochs=t_cfg["epochs"], batch_size=t_cfg["batch_size"], lr=t_cfg["learning_rate"]
+            model,
+            X_train,
+            device,
+            epochs=t_cfg["epochs"],
+            batch_size=t_cfg["batch_size"],
+            lr=t_cfg["learning_rate"],
+            seed=seed,
         )
+
         torch.save(model.state_dict(), checkpoint_path)
 
         plt.figure(figsize=(7, 4))
         plt.plot(loss_history)
-        plt.xlabel("Epoch"); plt.ylabel("MSE Loss")
+        plt.xlabel("Epoch")
+        plt.ylabel("MSE Loss")
         plt.title(f"Training Loss ({run_id})")
         plt.grid(True)
-        plt.savefig(os.path.join(results_dir, f"loss_{run_id}.png"))
+        plt.savefig(
+            os.path.join(results_dir, f"loss_{run_id}.png")
+        )
         plt.close()
 
     print(f"[{run_id}] Evaluating...")
     errors = engine.compute_errors(model, X_test, device)
     metrics = engine.evaluate(errors, y_test)
-    print(f"[{run_id}] AUC={metrics['auc']:.4f}  Precision={metrics['precision']:.4f}  "
-          f"Recall={metrics['recall']:.4f}  F1={metrics['f1']:.4f}")
 
-    engine.save_diagnostic_plots(run_id, errors, y_test, metrics, results_dir)
+    print(
+        f"[{run_id}] AUC={metrics['auc']:.4f}  "
+        f"Precision={metrics['precision']:.4f}  "
+        f"Recall={metrics['recall']:.4f}  "
+        f"F1={metrics['f1']:.4f}"
+    )
+
+    engine.save_diagnostic_plots(
+        run_id,
+        errors,
+        y_test,
+        metrics,
+        results_dir,
+    )
 
     return metrics
 

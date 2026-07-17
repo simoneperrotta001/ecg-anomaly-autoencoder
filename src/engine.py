@@ -36,28 +36,62 @@ def load_split(processed_dir, split_name):
     return X_train, X_test, y_test
 
 
-def train(model, X_train, device, epochs, batch_size, lr):
+def train(
+    model,
+    X_train,
+    device,
+    epochs,
+    batch_size,
+    lr,
+    seed=42,
+):
+    """
+    Train one autoencoder using a deterministic DataLoader order.
+
+    The explicit generator makes batch shuffling independent of the
+    experiments executed before this run.
+    """
     model.to(device)
-    loader = DataLoader(TensorDataset(X_train), batch_size=batch_size, shuffle=True)
+
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+
+    loader = DataLoader(
+        TensorDataset(X_train),
+        batch_size=batch_size,
+        shuffle=True,
+        generator=generator,
+    )
+
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     loss_history = []
+
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_loss = 0.0
+
         for (batch,) in loader:
             batch = batch.to(device)
+
             optimizer.zero_grad()
             reconstruction = model(batch)
             loss = criterion(reconstruction, batch)
             loss.backward()
             optimizer.step()
+
             epoch_loss += loss.item() * batch.size(0)
+
         epoch_loss /= len(X_train)
         loss_history.append(epoch_loss)
+
         if epoch % 20 == 0 or epoch == epochs:
-            print(f"    Epoch {epoch}/{epochs} - Loss: {epoch_loss:.6f}")
+            print(
+                f"    Epoch {epoch}/{epochs} "
+                f"- Loss: {epoch_loss:.6f}",
+                flush=True,
+            )
 
     return model, loss_history
 
@@ -75,9 +109,14 @@ def compute_errors(model, X_test, device, batch_size=256):
 
 
 def evaluate(errors, y_test):
-    """Computes AUC, Youden's J optimal threshold, and F1-optimal threshold,
-    reporting both for an evidence-based comparison instead of an assumed
-    trade-off."""
+    """
+    Compute ROC-AUC and select an exploratory operating threshold using
+    Youden's J statistic.
+
+    Precision, recall, F1, and the confusion matrix are evaluated at the
+    test-selected Youden threshold. ROC-AUC remains the primary
+    threshold-independent comparison metric.
+    """
     fpr, tpr, roc_thresholds = roc_curve(y_test, errors)
     roc_auc = auc(fpr, tpr)
 
