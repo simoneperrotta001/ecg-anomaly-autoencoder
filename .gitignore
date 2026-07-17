@@ -5,6 +5,9 @@
 models/*.pt
 models/*.pth
 
+# execution logs
+results/*.log
+
 # python
 __pycache__/
 *.pyc

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "normalization_strategy": "global_zscore",
+  "fitted_on": "normal_training_beats_only",
+  "split_before_normalization": true,
+  "random": {
+    "mean": -0.34862023645864093,
+    "std": 0.4333013348276324,
+    "training_samples": 72256,
+    "test_samples": 33653,
+    "normal_test_samples": 18064,
+    "anomalous_test_samples": 15589
+  },
+  "interpatient": {
+    "mean": -0.4195560066922139,
+    "std": 0.4502130157359957,
+    "training_samples": 45841,
+    "test_samples": 51143,
+    "normal_test_samples": 44235,
+    "anomalous_test_samples": 6908
+  }
+}
